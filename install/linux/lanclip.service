@@ -1,0 +1,14 @@
+[Unit]
+Description=Lanclip secure LAN clipboard synchronizer
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+Environment=XDG_RUNTIME_DIR=%t
+ExecStart=@BINARY@ daemon
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

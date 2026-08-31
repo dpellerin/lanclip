@@ -1,0 +1,43 @@
+name: Bug report
+description: Report a reproducible Lanclip problem
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include clipboard contents, credentials, pairing codes, certificates, device IDs, private addresses, or other personal information.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened, and what did you expect instead?
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS
+        - Wayland Linux
+        - Both
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Lanclip version or commit
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      description: Use only synthetic clipboard values and redacted diagnostics.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Redacted diagnostics
+      description: Include relevant status or doctor output only after removing identifying details.
