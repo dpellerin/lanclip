@@ -10,7 +10,14 @@ for command_name in go wl-paste wl-copy systemctl; do
 done
 
 repo_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-version=${LANCLIP_VERSION:-0.1.0-dev}
+version=${LANCLIP_VERSION:-}
+if [[ -z $version ]]; then
+  if tag=$(git -C "$repo_dir" describe --tags --exact-match --match 'v[0-9]*' 2>/dev/null); then
+    version=${tag#v}
+  else
+    version=0.1.0-dev
+  fi
+fi
 binary_dir="${HOME}/.local/bin"
 unit_dir="${XDG_CONFIG_HOME:-${HOME}/.config}/systemd/user"
 mkdir -p "$binary_dir" "$unit_dir"

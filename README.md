@@ -11,8 +11,7 @@ HTML, rich text, the Linux primary selection, routed networks, and VPN relay are
 out of scope.
 
 > **Pre-release:** the complete two-machine acceptance suite has passed on the
-> target Mac and Omarchy systems. The default build version remains
-> `0.1.0-dev` until a release is tagged.
+> target Mac and Omarchy systems. The first tagged release is `v0.1.0`.
 
 ## Build and test
 
@@ -25,10 +24,12 @@ make build
 ./bin/lanclip version
 ```
 
-Development builds default to version `0.1.0-dev`; override it with
-`make VERSION=<version> build` or `LANCLIP_VERSION=<version>` when running an
-installer. On macOS, the native AppKit adapter has an opt-in smoke test that
-temporarily replaces and then restores the current plain-text clipboard:
+Builds and installers run from an exact `v*` Git tag automatically embed that
+tag without the leading `v`. Untagged development builds default to
+`0.1.0-dev`; override this with `make VERSION=<version> build` or
+`LANCLIP_VERSION=<version>` when running an installer. On macOS, the native
+AppKit adapter has an opt-in smoke test that temporarily replaces and then
+restores the current plain-text clipboard:
 
 ```sh
 LANCLIP_TEST_NATIVE_CLIPBOARD=1 go test ./internal/clipboard -run Native
