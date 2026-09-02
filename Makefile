@@ -1,4 +1,4 @@
-VERSION ?= $(shell tag=$$(git describe --tags --exact-match --match 'v[0-9]*' 2>/dev/null) && printf '%s' "$${tag#v}" || printf '%s' '0.1.0-dev')
+VERSION != ./scripts/version.sh
 LDFLAGS = -s -w -X main.version=$(VERSION)
 
 .PHONY: all build test fmt vet clean

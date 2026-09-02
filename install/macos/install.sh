@@ -8,14 +8,7 @@ fi
 command -v go >/dev/null || { echo "Missing dependency: Go" >&2; exit 1; }
 
 repo_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-version=${LANCLIP_VERSION:-}
-if [[ -z $version ]]; then
-  if tag=$(git -C "$repo_dir" describe --tags --exact-match --match 'v[0-9]*' 2>/dev/null); then
-    version=${tag#v}
-  else
-    version=0.1.0-dev
-  fi
-fi
+version=$("$repo_dir/scripts/version.sh")
 base="${HOME}/Library/Application Support/Lanclip"
 binary="${base}/bin/lanclip"
 agent="${HOME}/Library/LaunchAgents/com.dpellerin.lanclip.plist"
