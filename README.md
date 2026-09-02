@@ -185,7 +185,12 @@ certificates, device identifiers, or private network details in a public issue.
   is stopped without permanently deduplicating intentional repeated copies.
 - Pairing TLS accepts an untrusted self-signed Ed25519 certificate only long
   enough to derive and compare the transcript-bound code. Sync TLS requires the
-  approved full certificate fingerprint.
+  approved full certificate fingerprint. Pending pairings are memory-only,
+  expire after five minutes, and approval is bound to the exact code and
+  fingerprint shown to the user.
+- Unauthenticated handshakes, pairing requests, discovered peers, clipboard
+  queues, and loop-suppression state are bounded. Clipboard queues coalesce to
+  the newest value so one slow peer cannot block delivery to another.
 - Runtime control sockets and identity/trust files are user-only (`0600`).
 
 See [docs/implementation-plan.md](docs/implementation-plan.md) for the full

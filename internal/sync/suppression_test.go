@@ -15,6 +15,16 @@ func TestSuppressorConsumesExactlyOne(t *testing.T) {
 		t.Fatal("matched twice")
 	}
 }
+
+func TestSuppressorIsBounded(t *testing.T) {
+	s := NewSuppressor(time.Minute)
+	for i := 0; i < maxSuppressionEntries+100; i++ {
+		s.Add(string(rune(i)), []byte{byte(i), byte(i >> 8)})
+	}
+	if got := len(s.entries); got != maxSuppressionEntries {
+		t.Fatalf("entries=%d", got)
+	}
+}
 func TestSuppressorMismatchAndExpiry(t *testing.T) {
 	s := NewSuppressor(time.Second)
 	now := time.Now()

@@ -175,8 +175,13 @@ Implement explicit short-authentication-string pairing:
 5. `lanclip pair` prints the peer name, full key fingerprint, and six-word code on both machines.
 6. The user verifies that the codes match, then runs `lanclip approve` on both
    machines and chooses the named device from a numbered menu.
-7. Each side pins the other side's public key fingerprint.
-8. All future connections require the pinned certificate. A changed identity is rejected and reported; it is never silently trusted.
+7. Approval carries an opaque local session token and the exact fingerprint and
+   code that were displayed; it fails if the pending request changed or expired.
+8. Pending requests remain in memory, expire after five minutes, and are capped
+   and rate-limited. They are never restored after restart.
+9. Each side pins the other side's public key fingerprint using an atomic
+   trust-store update.
+10. All future connections require the pinned certificate. A changed identity is rejected and reported; it is never silently trusted.
 
 If implementing a correct transcript-bound comparison protocol becomes disproportionately complex, use a one-time high-entropy pairing secret entered on the second machine instead. Do not substitute unauthenticated trust-on-first-use without a user comparison step.
 
@@ -187,6 +192,8 @@ If implementing a correct transcript-bound comparison protocol becomes dispropor
 - Require mutual authentication using the pinned peer identities after pairing.
 - Reject unknown peers before processing application messages.
 - Apply read/write deadlines and periodic keepalives.
+- Bound concurrent unauthenticated handshakes and pairing attempts per LAN
+  source. Bound discovery, clipboard, and loop-suppression queues.
 - Reconnect with bounded exponential backoff plus jitter (for example: 250 ms through 10 seconds).
 - Never disable certificate verification as a production shortcut.
 - Refuse application payloads larger than 1 MiB.

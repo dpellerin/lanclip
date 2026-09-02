@@ -1,8 +1,10 @@
 package discovery
 
 import (
+	"fmt"
 	"net"
 	"testing"
+	"time"
 )
 
 func TestSelfFilterAndAddressUpdate(t *testing.T) {
@@ -16,6 +18,23 @@ func TestSelfFilterAndAddressUpdate(t *testing.T) {
 	p, _ := s.Find("x")
 	if p.Addresses[0] != "3:4" {
 		t.Fatal(p)
+	}
+}
+
+func TestPeerCacheIsBoundedAndExpires(t *testing.T) {
+	now := time.Now()
+	s := &Service{selfID: "self", peers: map[string]Peer{}}
+	for i := 0; i < maxPeers+10; i++ {
+		s.ObserveForTest(Peer{ID: fmt.Sprintf("peer-%03d", i), Name: "peer", LastSeen: now.Add(time.Duration(i) * time.Millisecond)})
+	}
+	if got := len(s.peers); got != maxPeers {
+		t.Fatalf("peers=%d", got)
+	}
+	s.mu.Lock()
+	s.pruneLocked(now.Add(peerTTL + time.Second))
+	s.mu.Unlock()
+	if got := len(s.peers); got != 0 {
+		t.Fatalf("expired peers=%d", got)
 	}
 }
 

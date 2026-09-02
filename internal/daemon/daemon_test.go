@@ -1,9 +1,12 @@
 package daemon
 
 import (
+	"context"
 	"crypto/tls"
 	"net"
 	"testing"
+
+	"github.com/dpellerin/lanclip/internal/protocol"
 )
 
 func TestRegisterReplacesStaleConnection(t *testing.T) {
@@ -27,5 +30,37 @@ func TestRegisterReplacesStaleConnection(t *testing.T) {
 	}
 	if got := d.stats["peer"].Reconnects; got != 2 {
 		t.Fatalf("reconnects=%d", got)
+	}
+}
+
+func TestPeerQueueKeepsLatestClipboard(t *testing.T) {
+	d := &Daemon{ctx: context.Background()}
+	pc := &peerConn{out: make(chan protocol.Message, 1), done: make(chan struct{})}
+	d.enqueuePeer(pc, protocol.Message{Type: "clipboard", Text: "first"})
+	d.enqueuePeer(pc, protocol.Message{Type: "clipboard", Text: "latest"})
+	if got := (<-pc.out).Text; got != "latest" {
+		t.Fatalf("queued=%q", got)
+	}
+}
+
+func TestInboundClipboardQueueKeepsLatest(t *testing.T) {
+	d := &Daemon{ctx: context.Background(), clipWrites: make(chan inboundClipboard, 1)}
+	d.enqueueClipboard(inboundClipboard{text: "first"})
+	d.enqueueClipboard(inboundClipboard{text: "latest"})
+	if got := (<-d.clipWrites).text; got != "latest" {
+		t.Fatalf("queued=%q", got)
+	}
+}
+
+func TestPairAttemptsAreRateLimited(t *testing.T) {
+	d := &Daemon{pairRates: map[string]pairRate{}}
+	addr := &net.TCPAddr{IP: net.ParseIP("192.0.2.10"), Port: 1234}
+	for i := 0; i < maxPairAttemptsPerMinute; i++ {
+		if !d.allowPairAttempt(addr) {
+			t.Fatalf("attempt %d was unexpectedly limited", i)
+		}
+	}
+	if d.allowPairAttempt(addr) {
+		t.Fatal("accepted attempt over rate limit")
 	}
 }

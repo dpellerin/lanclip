@@ -66,8 +66,8 @@ func runControl(args []string, socket string, input *bufio.Reader, output io.Wri
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	request := func(command, argument string) (control.Response, error) {
-		resp, err := call(ctx, socket, control.Request{Command: command, Argument: argument})
+	request := func(req control.Request) (control.Response, error) {
+		resp, err := call(ctx, socket, req)
 		if err != nil {
 			return control.Response{}, fmt.Errorf("Lanclip service is unavailable: %w", err)
 		}
@@ -78,7 +78,7 @@ func runControl(args []string, socket string, input *bufio.Reader, output io.Wri
 	}
 
 	if reports[command] {
-		resp, err := request(command, "")
+		resp, err := request(control.Request{Command: command})
 		if err != nil {
 			return err
 		}
@@ -105,7 +105,7 @@ func runControl(args []string, socket string, input *bufio.Reader, output io.Wri
 		return nil
 	}
 
-	peersResp, err := request("peers", "")
+	peersResp, err := request(control.Request{Command: "peers"})
 	if err != nil {
 		return err
 	}
@@ -156,7 +156,13 @@ func runControl(args []string, socket string, input *bufio.Reader, output io.Wri
 
 	// Resolve the friendly name or menu choice locally, then send the stable ID
 	// over the private control socket. Users never need to see or type it.
-	resp, err := request(command, selected.ID)
+	req := control.Request{Command: command, Argument: selected.ID}
+	if command == "approve" {
+		req.PairToken = selected.ApprovalToken
+		req.Fingerprint = selected.Fingerprint
+		req.Code = selected.ComparisonCode
+	}
+	resp, err := request(req)
 	if err != nil {
 		return err
 	}
@@ -165,6 +171,7 @@ func runControl(args []string, socket string, input *bufio.Reader, output io.Wri
 		if err := decode(resp.Data, &peer); err != nil {
 			return err
 		}
+		peer.Name = safeDeviceName(peer.Name)
 		fmt.Fprintf(output, "Pairing request sent to %s.\n\n", peer.Name)
 		printPairingIdentity(output, daemon.PeerStatus{Peer: peer})
 		fmt.Fprintf(output, "If both match, run this on each device:\n  lanclip approve %q\n", peer.Name)
@@ -194,6 +201,12 @@ func decodePeers(data any) ([]daemon.PeerStatus, error) {
 	var peers []daemon.PeerStatus
 	if err := decode(data, &peers); err != nil {
 		return nil, err
+	}
+	for i := range peers {
+		peers[i].Name = pairing.NormalizeDeviceName(peers[i].Name)
+		if peers[i].Name == "" {
+			peers[i].Name = "Unknown device"
+		}
 	}
 	return peers, nil
 }
@@ -303,7 +316,7 @@ func confirm(input *bufio.Reader, output io.Writer, question string, defaultYes 
 
 func printStatus(output io.Writer, status daemon.Status) {
 	fmt.Fprintf(output, "Lanclip %s\n\n", status.Version)
-	fmt.Fprintf(output, "This device:  %s\n", status.Name)
+	fmt.Fprintf(output, "This device:  %s\n", safeDeviceName(status.Name))
 	fmt.Fprintf(output, "Service:      running for %s\n", status.Uptime)
 	clipState := "ready"
 	if !status.Clipboard.Running {
@@ -344,7 +357,7 @@ func printStatus(output io.Writer, status daemon.Status) {
 		if peer.Stats.Connected {
 			state = "connected"
 		}
-		fmt.Fprintf(output, "  %s — %s\n", peer.Name, state)
+		fmt.Fprintf(output, "  %s — %s\n", safeDeviceName(peer.Name), state)
 		if peer.Stats.Address != "" {
 			fmt.Fprintf(output, "    Address:       %s\n", peer.Stats.Address)
 		} else if len(peer.Addresses) > 0 {
@@ -371,7 +384,7 @@ func printPeers(output io.Writer, peers []daemon.PeerStatus) {
 	}
 	for _, peer := range peers {
 		state := humanPeerState(peer)
-		fmt.Fprintf(output, "  %s — %s\n", peer.Name, state)
+		fmt.Fprintf(output, "  %s — %s\n", safeDeviceName(peer.Name), state)
 		if peer.State == pairing.Pending {
 			fmt.Fprintf(output, "    Code:        %s\n", peer.ComparisonCode)
 			fmt.Fprintf(output, "    Fingerprint: %s\n", groupedFingerprint(peer.Fingerprint))
@@ -382,6 +395,14 @@ func printPeers(output io.Writer, peers []daemon.PeerStatus) {
 			fmt.Fprintf(output, "    Address:     %s\n", peer.Addresses[0])
 		}
 	}
+}
+
+func safeDeviceName(name string) string {
+	name = pairing.NormalizeDeviceName(name)
+	if name == "" {
+		return "Unknown device"
+	}
+	return name
 }
 
 func printDoctor(output io.Writer, checks []daemon.DoctorCheck) {

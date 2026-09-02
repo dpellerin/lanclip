@@ -7,7 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
+
+	"github.com/dpellerin/lanclip/internal/pairing"
 )
 
 const (
@@ -121,12 +122,7 @@ func save(path string, cfg Config) error {
 var deviceName = platformDeviceName
 
 func cleanDeviceName(name string) string {
-	return strings.TrimSpace(strings.Map(func(r rune) rune {
-		if r < ' ' || r == 0x7f {
-			return -1
-		}
-		return r
-	}, name))
+	return pairing.NormalizeDeviceName(name)
 }
 
 func CheckPrivate(path string) error {

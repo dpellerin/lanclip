@@ -76,7 +76,7 @@ func TestPairUsesNumberedSelectionAndSendsHiddenID(t *testing.T) {
 }
 
 func TestApproveDefaultsSingleSelectionAndConfirmsComparison(t *testing.T) {
-	peer := daemon.PeerStatus{Peer: pairing.Peer{ID: testPeerID, Name: "Mac", Fingerprint: testFP, State: pairing.Pending, ComparisonCode: "amber lake solar fern jade blue"}}
+	peer := daemon.PeerStatus{Peer: pairing.Peer{ID: testPeerID, Name: "Mac", Fingerprint: testFP, State: pairing.Pending, ComparisonCode: "amber lake solar fern jade blue", ApprovalToken: "approval-token"}}
 	var sent control.Request
 	out := runControlForTest(t, []string{"approve"}, "\ny\n", func(_ context.Context, _ string, request control.Request) (control.Response, error) {
 		if request.Command == "peers" {
@@ -87,6 +87,9 @@ func TestApproveDefaultsSingleSelectionAndConfirmsComparison(t *testing.T) {
 	})
 	if sent.Command != "approve" || sent.Argument != testPeerID {
 		t.Fatalf("request=%+v", sent)
+	}
+	if sent.PairToken != peer.ApprovalToken || sent.Fingerprint != peer.Fingerprint || sent.Code != peer.ComparisonCode {
+		t.Fatalf("approval was not bound to displayed pairing: %+v", sent)
 	}
 	for _, want := range []string{"Selection [1]", "Do the code and fingerprint match", "Approved Mac"} {
 		if !strings.Contains(out, want) {
@@ -125,6 +128,16 @@ func TestDoctorUsesReadableCheckList(t *testing.T) {
 	}
 	if strings.Contains(out, "{") {
 		t.Fatalf("JSON leaked into output:\n%s", out)
+	}
+}
+
+func TestPeerNamesCannotInjectTerminalControls(t *testing.T) {
+	peer := daemon.PeerStatus{Peer: pairing.Peer{ID: testPeerID, Name: "Mac\x1b[2J\u202e", State: pairing.Trusted}}
+	out := runControlForTest(t, []string{"peers"}, "", func(_ context.Context, _ string, _ control.Request) (control.Response, error) {
+		return control.Response{OK: true, Data: []daemon.PeerStatus{peer}}, nil
+	})
+	if strings.ContainsAny(out, "\x1b\u202e") || !strings.Contains(out, "Mac[2J") {
+		t.Fatalf("unsafe output: %q", out)
 	}
 }
 

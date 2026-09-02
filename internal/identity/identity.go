@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
@@ -93,12 +94,45 @@ func parse(b []byte) (*Identity, error) {
 	if id == cert.Subject.CommonName || id == "" {
 		return nil, errors.New("certificate has invalid identity")
 	}
+	if !ValidUUID(id) {
+		return nil, errors.New("certificate identity is not a valid UUID")
+	}
+	pub, ok := cert.PublicKey.(ed25519.PublicKey)
+	if !ok {
+		return nil, errors.New("identity certificate key is not Ed25519")
+	}
+	if !bytes.Equal(pub, key.Public().(ed25519.PublicKey)) {
+		return nil, errors.New("identity private key does not match certificate")
+	}
+	if err := cert.CheckSignature(cert.SignatureAlgorithm, cert.RawTBSCertificate, cert.Signature); err != nil {
+		return nil, fmt.Errorf("identity certificate signature is invalid: %w", err)
+	}
+	now := time.Now()
+	if now.Before(cert.NotBefore) || now.After(cert.NotAfter) {
+		return nil, errors.New("identity certificate is outside its validity period")
+	}
 	return &Identity{ID: id, Certificate: certBlock.Bytes, PrivateKey: key, TLSCert: b}, nil
 }
 
 func (i *Identity) Fingerprint() string      { return Fingerprint(i.Certificate) }
 func (i *Identity) ShortFingerprint() string { return i.Fingerprint()[:16] }
 func Fingerprint(der []byte) string          { h := sha256.Sum256(der); return hex.EncodeToString(h[:]) }
+
+func ValidUUID(s string) bool {
+	if len(s) != 36 || s[8] != '-' || s[13] != '-' || s[18] != '-' || s[23] != '-' || s[14] != '4' || !strings.ContainsRune("89ab", rune(s[19])) {
+		return false
+	}
+	_, err := hex.DecodeString(strings.ReplaceAll(s, "-", ""))
+	return err == nil
+}
+
+func ValidFingerprint(s string, bytes int) bool {
+	if len(s) != bytes*2 {
+		return false
+	}
+	_, err := hex.DecodeString(s)
+	return err == nil
+}
 
 func UUID() (string, error) {
 	b := make([]byte, 16)

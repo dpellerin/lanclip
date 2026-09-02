@@ -18,11 +18,17 @@ type Suppressor struct {
 	now     func() time.Time
 }
 
+const maxSuppressionEntries = 256
+
 func NewSuppressor(ttl time.Duration) *Suppressor { return &Suppressor{ttl: ttl, now: time.Now} }
 func (s *Suppressor) Add(eventID string, text []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.prune()
+	if len(s.entries) >= maxSuppressionEntries {
+		copy(s.entries, s.entries[len(s.entries)-maxSuppressionEntries+1:])
+		s.entries = s.entries[:maxSuppressionEntries-1]
+	}
 	s.entries = append(s.entries, suppressionEntry{eventID, sha256.Sum256(text), s.now().Add(s.ttl)})
 }
 func (s *Suppressor) Consume(text []byte) bool {

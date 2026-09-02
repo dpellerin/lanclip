@@ -64,6 +64,16 @@ type peerConn struct {
 	conn     *tls.Conn
 	write    sync.Mutex
 	outbound bool
+	out      chan protocol.Message
+	done     chan struct{}
+	doneOnce sync.Once
+}
+type inboundClipboard struct {
+	peerID, eventID, text string
+}
+type pairRate struct {
+	window time.Time
+	count  int
 }
 type Daemon struct {
 	cfg        config.Config
@@ -83,10 +93,20 @@ type Daemon struct {
 	conns      map[string]*peerConn
 	stats      map[string]Stats
 	connecting map[string]bool
+	clipWrites chan inboundClipboard
+	handshakes chan struct{}
+	pairMu     sync.Mutex
+	pairRates  map[string]pairRate
 }
 
+const (
+	maxConcurrentHandshakes     = 32
+	maxPairAttemptsPerMinute    = 10
+	maxClipboardFramesPerSecond = 30
+)
+
 func New(cfg config.Config, paths config.Paths, id *identity.Identity, store *pairing.Store, version string) (*Daemon, error) {
-	d := &Daemon{cfg: cfg, paths: paths, id: id, store: store, version: version, started: time.Now(), clip: clipboard.New(cfg.MaxClipboardBytes), suppress: syncer.NewSuppressor(5 * time.Second), conns: map[string]*peerConn{}, stats: map[string]Stats{}, connecting: map[string]bool{}}
+	d := &Daemon{cfg: cfg, paths: paths, id: id, store: store, version: version, started: time.Now(), clip: clipboard.New(cfg.MaxClipboardBytes), suppress: syncer.NewSuppressor(5 * time.Second), conns: map[string]*peerConn{}, stats: map[string]Stats{}, connecting: map[string]bool{}, clipWrites: make(chan inboundClipboard, 1), handshakes: make(chan struct{}, maxConcurrentHandshakes), pairRates: map[string]pairRate{}}
 	return d, nil
 }
 
@@ -124,6 +144,7 @@ func (d *Daemon) Run(parent context.Context) error {
 	go d.disc.Run(d.ctx)
 	go d.acceptLoop()
 	go d.localLoop(events)
+	go d.clipboardWriteLoop()
 	go d.connectLoop()
 	<-d.ctx.Done()
 	d.close()
@@ -166,18 +187,34 @@ func (d *Daemon) acceptLoop() {
 			_ = c.Close()
 			continue
 		}
-		go d.handleTLS(c.(*tls.Conn), false)
+		select {
+		case d.handshakes <- struct{}{}:
+			go func() {
+				d.handleTLS(c.(*tls.Conn), false, func() { <-d.handshakes })
+			}()
+		default:
+			_ = c.Close()
+		}
 	}
 }
-func (d *Daemon) handleTLS(c *tls.Conn, outbound bool) {
+func (d *Daemon) handleTLS(c *tls.Conn, outbound bool, handshakeDone func()) {
+	defer func() {
+		if handshakeDone != nil {
+			handshakeDone()
+		}
+	}()
 	if err := c.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
 		c.Close()
 		return
 	}
 	if err := c.HandshakeContext(d.ctx); err != nil {
-		slog.Warn("TLS handshake rejected", "error", safeError(err))
+		slog.Debug("TLS handshake rejected", "error", safeError(err))
 		c.Close()
 		return
+	}
+	if handshakeDone != nil {
+		handshakeDone()
+		handshakeDone = nil
 	}
 	_ = c.SetDeadline(time.Time{})
 	switch c.ConnectionState().NegotiatedProtocol {
@@ -192,6 +229,10 @@ func (d *Daemon) handleTLS(c *tls.Conn, outbound bool) {
 
 func (d *Daemon) handleIncomingPair(c *tls.Conn) {
 	defer c.Close()
+	if !d.allowPairAttempt(c.RemoteAddr()) {
+		slog.Debug("pairing request rate limited", "address", c.RemoteAddr().String())
+		return
+	}
 	_ = c.SetDeadline(time.Now().Add(10 * time.Second))
 	m, err := protocol.Read(c, 16<<10)
 	if err != nil || m.Type != "pair_offer" {
@@ -199,7 +240,8 @@ func (d *Daemon) handleIncomingPair(c *tls.Conn) {
 	}
 	peerCert := c.ConnectionState().PeerCertificates[0]
 	actual := identity.Fingerprint(peerCert.Raw)
-	if m.DeviceID == "" || m.Nonce == "" || m.Fingerprint != actual || !ValidateCertificateIdentity(peerCert, m.DeviceID) {
+	name := pairing.NormalizeDeviceName(m.Name)
+	if !identity.ValidUUID(m.DeviceID) || name == "" || m.Nonce == "" || m.Fingerprint != actual || !ValidateCertificateIdentity(peerCert, m.DeviceID) {
 		return
 	}
 	nonce, err := pairing.RandomNonce()
@@ -207,11 +249,37 @@ func (d *Daemon) handleIncomingPair(c *tls.Conn) {
 		return
 	}
 	code := pairing.ComparisonCode(d.id.ID, d.id.Fingerprint(), nonce, m.DeviceID, actual, m.Nonce)
-	if err = d.store.PutPending(pairing.Peer{ID: m.DeviceID, Name: m.Name, Fingerprint: actual, ComparisonCode: code}); err != nil {
+	pending, err := d.store.PutPending(pairing.Peer{ID: m.DeviceID, Name: name, Fingerprint: actual, ComparisonCode: code})
+	if err != nil {
 		return
 	}
 	_ = protocol.Write(c, protocol.Message{Type: "pair_answer", DeviceID: d.id.ID, Name: d.cfg.Name, Nonce: nonce, Fingerprint: d.id.Fingerprint()}, 16<<10)
-	slog.Info("pairing request pending approval", "peer", m.Name, "id", short(m.DeviceID))
+	slog.Info("pairing request pending approval", "peer", pending.Name, "id", short(m.DeviceID))
+}
+
+func (d *Daemon) allowPairAttempt(addr net.Addr) bool {
+	host, _, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		host = addr.String()
+	}
+	now := time.Now()
+	d.pairMu.Lock()
+	defer d.pairMu.Unlock()
+	for source, rate := range d.pairRates {
+		if now.Sub(rate.window) >= time.Minute {
+			delete(d.pairRates, source)
+		}
+	}
+	rate := d.pairRates[host]
+	if rate.window.IsZero() || now.Sub(rate.window) >= time.Minute {
+		rate = pairRate{window: now}
+	}
+	if rate.count >= maxPairAttemptsPerMinute {
+		return false
+	}
+	rate.count++
+	d.pairRates[host] = rate
+	return true
 }
 
 func (d *Daemon) pair(ctx context.Context, query string) (pairing.Peer, error) {
@@ -246,12 +314,15 @@ func (d *Daemon) pair(ctx context.Context, query string) (pairing.Peer, error) {
 	if err != nil {
 		return pairing.Peer{}, err
 	}
-	if m.Type != "pair_answer" || m.DeviceID != p.ID || !strings.HasPrefix(m.Fingerprint, p.Fingerprint) || m.Nonce == "" || !ValidateCertificateIdentity(c.ConnectionState().PeerCertificates[0], m.DeviceID) {
+	peerCert := c.ConnectionState().PeerCertificates[0]
+	actual := identity.Fingerprint(peerCert.Raw)
+	name := pairing.NormalizeDeviceName(m.Name)
+	if m.Type != "pair_answer" || !identity.ValidUUID(m.DeviceID) || m.DeviceID != p.ID || m.Fingerprint != actual || !strings.HasPrefix(actual, p.Fingerprint) || name == "" || m.Nonce == "" || !ValidateCertificateIdentity(peerCert, m.DeviceID) {
 		return pairing.Peer{}, errors.New("invalid pairing response")
 	}
 	code := pairing.ComparisonCode(d.id.ID, d.id.Fingerprint(), nonce, m.DeviceID, m.Fingerprint, m.Nonce)
-	peer := pairing.Peer{ID: m.DeviceID, Name: m.Name, Fingerprint: m.Fingerprint, ComparisonCode: code}
-	if err = d.store.PutPending(peer); err != nil {
+	peer, err := d.store.PutPending(pairing.Peer{ID: m.DeviceID, Name: name, Fingerprint: actual, ComparisonCode: code})
+	if err != nil {
 		return pairing.Peer{}, err
 	}
 	return peer, nil
@@ -363,7 +434,7 @@ func (d *Daemon) dialSync(dp discovery.Peer, tp pairing.Peer, endpoint string) e
 	if err != nil {
 		return err
 	}
-	d.handleTLS(raw.(*tls.Conn), true)
+	d.handleTLS(raw.(*tls.Conn), true, nil)
 	return nil
 }
 
@@ -387,9 +458,10 @@ func (d *Daemon) handleSync(c *tls.Conn, outbound bool) {
 	if m.Type != "hello" || m.DeviceID != trusted.ID {
 		return
 	}
-	if m.Name != "" && m.Name != trusted.Name {
-		if err := d.store.UpdateName(trusted.ID, m.Name); err == nil {
-			trusted.Name = m.Name
+	peerName := pairing.NormalizeDeviceName(m.Name)
+	if peerName != "" && peerName != trusted.Name {
+		if err := d.store.UpdateName(trusted.ID, peerName); err == nil {
+			trusted.Name = peerName
 		}
 	}
 	if !outbound {
@@ -401,15 +473,22 @@ func (d *Daemon) handleSync(c *tls.Conn, outbound bool) {
 	if outbound != (d.id.ID < trusted.ID) {
 		return
 	}
-	pc := &peerConn{id: trusted.ID, conn: c, outbound: outbound}
+	pc := &peerConn{id: trusted.ID, conn: c, outbound: outbound, out: make(chan protocol.Message, 1), done: make(chan struct{})}
 	if !d.register(pc) {
 		return
 	}
 	defer d.unregister(pc)
 	slog.Info("peer connected", "peer", trusted.Name, "id", short(trusted.ID), "address", c.RemoteAddr().String())
+	go d.writeLoop(pc)
 	d.readLoop(pc)
 }
 func (d *Daemon) register(pc *peerConn) bool {
+	if pc.out == nil {
+		pc.out = make(chan protocol.Message, 1)
+	}
+	if pc.done == nil {
+		pc.done = make(chan struct{})
+	}
 	d.mu.Lock()
 	old := d.conns[pc.id]
 	if old == pc {
@@ -434,6 +513,7 @@ func (d *Daemon) register(pc *peerConn) bool {
 	return true
 }
 func (d *Daemon) unregister(pc *peerConn) {
+	pc.doneOnce.Do(func() { close(pc.done) })
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.conns[pc.id] == pc {
@@ -453,6 +533,8 @@ func (d *Daemon) readLoop(pc *peerConn) {
 	defer tick.Stop()
 	errs := make(chan error, 1)
 	go func() {
+		clipboardWindow := time.Now()
+		clipboardCount := 0
 		for {
 			_ = pc.conn.SetReadDeadline(time.Now().Add(45 * time.Second))
 			m, err := protocol.Read(pc.conn, protocol.DefaultMaxFrame)
@@ -465,21 +547,16 @@ func (d *Daemon) readLoop(pc *peerConn) {
 				if m.Text == "" || m.MIME != "text/plain;charset=utf-8" || len(m.Text) > d.cfg.MaxClipboardBytes {
 					continue
 				}
-				d.suppress.Add(m.EventID, []byte(m.Text))
-				ctx, cancel := context.WithTimeout(d.ctx, 5*time.Second)
-				err = d.clip.Write(ctx, m.Text)
-				cancel()
-				if err != nil {
-					d.suppress.Consume([]byte(m.Text))
-					d.recordError(pc.id, err)
-					continue
+				now := time.Now()
+				if now.Sub(clipboardWindow) >= time.Second {
+					clipboardWindow, clipboardCount = now, 0
 				}
-				d.mu.Lock()
-				s := d.stats[pc.id]
-				s.LastReceived = time.Now()
-				s.ReceivedBytes = len(m.Text)
-				d.stats[pc.id] = s
-				d.mu.Unlock()
+				clipboardCount++
+				if clipboardCount > maxClipboardFramesPerSecond {
+					errs <- errors.New("peer exceeded clipboard update rate")
+					return
+				}
+				d.enqueueClipboard(inboundClipboard{peerID: pc.id, eventID: m.EventID, text: m.Text})
 			case "ping":
 				_ = d.send(pc, protocol.Message{Type: "pong", Nonce: m.Nonce})
 			case "pong":
@@ -532,17 +609,95 @@ func (d *Daemon) localLoop(events <-chan clipboard.Event) {
 			}
 			d.mu.RUnlock()
 			for _, c := range conns {
-				if err := d.send(c, m); err != nil {
-					d.recordError(c.id, err)
-				} else {
-					d.mu.Lock()
-					s := d.stats[c.id]
-					s.LastSent = time.Now()
-					s.SentBytes = len(e.Text)
-					d.stats[c.id] = s
-					d.mu.Unlock()
-				}
+				d.enqueuePeer(c, m)
 			}
+		}
+	}
+}
+
+func (d *Daemon) enqueuePeer(pc *peerConn, m protocol.Message) {
+	select {
+	case <-pc.done:
+		return
+	default:
+	}
+	select {
+	case pc.out <- m:
+		return
+	default:
+	}
+	// Clipboard state is latest-value state. Replace an unsent update instead of
+	// allowing a slow peer to block or grow an unbounded queue.
+	select {
+	case <-pc.out:
+	default:
+	}
+	select {
+	case pc.out <- m:
+	case <-pc.done:
+	}
+}
+
+func (d *Daemon) writeLoop(pc *peerConn) {
+	for {
+		select {
+		case <-d.ctx.Done():
+			return
+		case <-pc.done:
+			return
+		case m := <-pc.out:
+			if err := d.send(pc, m); err != nil {
+				d.recordError(pc.id, err)
+				_ = pc.conn.Close()
+				return
+			}
+			d.mu.Lock()
+			s := d.stats[pc.id]
+			s.LastSent = time.Now()
+			s.SentBytes = len(m.Text)
+			d.stats[pc.id] = s
+			d.mu.Unlock()
+		}
+	}
+}
+
+func (d *Daemon) enqueueClipboard(next inboundClipboard) {
+	select {
+	case d.clipWrites <- next:
+		return
+	default:
+	}
+	select {
+	case <-d.clipWrites:
+	default:
+	}
+	select {
+	case d.clipWrites <- next:
+	case <-d.ctx.Done():
+	}
+}
+
+func (d *Daemon) clipboardWriteLoop() {
+	for {
+		select {
+		case <-d.ctx.Done():
+			return
+		case next := <-d.clipWrites:
+			d.suppress.Add(next.eventID, []byte(next.text))
+			ctx, cancel := context.WithTimeout(d.ctx, 5*time.Second)
+			err := d.clip.Write(ctx, next.text)
+			cancel()
+			if err != nil {
+				d.suppress.Consume([]byte(next.text))
+				d.recordError(next.peerID, err)
+				continue
+			}
+			d.mu.Lock()
+			s := d.stats[next.peerID]
+			s.LastReceived = time.Now()
+			s.ReceivedBytes = len(next.text)
+			d.stats[next.peerID] = s
+			d.mu.Unlock()
 		}
 	}
 }
@@ -573,7 +728,7 @@ func (d *Daemon) handleControl(ctx context.Context, r control.Request) control.R
 		}
 		return control.Response{OK: true, Data: p}
 	case "approve":
-		return result(d.store.Approve(r.Argument))
+		return result(d.store.Approve(r.Argument, r.PairToken, r.Fingerprint, r.Code))
 	case "reject":
 		return result(d.store.Reject(r.Argument))
 	case "unpair":

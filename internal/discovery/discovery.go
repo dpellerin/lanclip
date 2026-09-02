@@ -12,7 +12,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dpellerin/lanclip/internal/identity"
+	"github.com/dpellerin/lanclip/internal/pairing"
 	"github.com/libp2p/zeroconf/v2"
+)
+
+const (
+	peerTTL  = 45 * time.Second
+	maxPeers = 256
 )
 
 type Peer struct {
@@ -222,7 +229,8 @@ func (s *Service) observe(e *zeroconf.ServiceEntry) {
 		}
 	}
 	id := fields["id"]
-	if id == "" || id == s.selfID || fields["v"] != "1" {
+	name := pairing.NormalizeDeviceName(e.Instance)
+	if !identity.ValidUUID(id) || id == s.selfID || fields["v"] != "1" || !identity.ValidFingerprint(fields["pk"], 8) || name == "" {
 		return
 	}
 	var addrs []string
@@ -235,32 +243,54 @@ func (s *Service) observe(e *zeroconf.ServiceEntry) {
 	sort.Strings(addrs)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.peers[id] = Peer{ID: id, Name: e.Instance, Fingerprint: fields["pk"], OS: fields["os"], Port: e.Port, Addresses: addrs, LastSeen: time.Now()}
+	s.putPeerLocked(Peer{ID: id, Name: name, Fingerprint: fields["pk"], OS: fields["os"], Port: e.Port, Addresses: addrs, LastSeen: time.Now()})
+}
+
+func (s *Service) putPeerLocked(peer Peer) {
+	s.pruneLocked(peer.LastSeen)
+	if _, exists := s.peers[peer.ID]; !exists && len(s.peers) >= maxPeers {
+		var oldestID string
+		var oldest time.Time
+		for peerID, existing := range s.peers {
+			if oldestID == "" || existing.LastSeen.Before(oldest) {
+				oldestID, oldest = peerID, existing.LastSeen
+			}
+		}
+		delete(s.peers, oldestID)
+	}
+	s.peers[peer.ID] = peer
 }
 func (s *Service) Peers() []Peer {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pruneLocked(time.Now())
 	out := make([]Peer, 0, len(s.peers))
-	cutoff := time.Now().Add(-45 * time.Second)
 	for _, p := range s.peers {
-		if p.LastSeen.After(cutoff) {
-			out = append(out, p)
-		}
+		out = append(out, p)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
 func (s *Service) Find(query string) (Peer, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pruneLocked(time.Now())
 	q := strings.ToLower(query)
-	cutoff := time.Now().Add(-45 * time.Second)
 	for _, p := range s.peers {
-		if p.LastSeen.After(cutoff) && (p.ID == query || strings.ToLower(p.Name) == q || strings.HasPrefix(p.ID, query)) {
+		if p.ID == query || strings.ToLower(p.Name) == q || strings.HasPrefix(p.ID, query) {
 			return p, true
 		}
 	}
 	return Peer{}, false
+}
+
+func (s *Service) pruneLocked(now time.Time) {
+	cutoff := now.Add(-peerTTL)
+	for id, p := range s.peers {
+		if !p.LastSeen.After(cutoff) {
+			delete(s.peers, id)
+		}
+	}
 }
 func (s *Service) Health() (time.Time, string) {
 	s.mu.RLock()
@@ -302,5 +332,5 @@ func (s *Service) ObserveForTest(p Peer) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.peers[p.ID] = p
+	s.putPeerLocked(p)
 }

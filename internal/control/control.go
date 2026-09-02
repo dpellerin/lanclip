@@ -11,8 +11,11 @@ import (
 )
 
 type Request struct {
-	Command  string `json:"command"`
-	Argument string `json:"argument,omitempty"`
+	Command     string `json:"command"`
+	Argument    string `json:"argument,omitempty"`
+	PairToken   string `json:"pair_token,omitempty"`
+	Fingerprint string `json:"fingerprint,omitempty"`
+	Code        string `json:"code,omitempty"`
 }
 type Response struct {
 	OK    bool   `json:"ok"`

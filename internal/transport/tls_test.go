@@ -66,10 +66,11 @@ func TestPinnedTLSAcceptsTrustedAndRejectsUnknown(t *testing.T) {
 }
 func trust(t *testing.T, s *pairing.Store, id *identity.Identity) {
 	t.Helper()
-	if e := s.PutPending(pairing.Peer{ID: id.ID, Name: id.ID, Fingerprint: id.Fingerprint()}); e != nil {
+	p, e := s.PutPending(pairing.Peer{ID: id.ID, Name: id.ID, Fingerprint: id.Fingerprint(), ComparisonCode: "test code"})
+	if e != nil {
 		t.Fatal(e)
 	}
-	if e := s.Approve(id.ID); e != nil {
+	if e := s.Approve(id.ID, p.ApprovalToken, p.Fingerprint, p.ComparisonCode); e != nil {
 		t.Fatal(e)
 	}
 }
