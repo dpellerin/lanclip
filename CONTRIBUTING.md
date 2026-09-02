@@ -6,7 +6,8 @@ should be treated as security-sensitive.
 
 ## Development setup
 
-Use Go 1.24 or newer. Linux development additionally requires `wl-clipboard`.
+Use Go 1.26.8 or a newer supported release. Linux development additionally
+requires `wl-clipboard`.
 Build native binaries on their target operating system.
 
 Before submitting a pull request, run:

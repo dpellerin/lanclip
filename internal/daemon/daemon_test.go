@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net"
 	"testing"
 
@@ -62,5 +63,37 @@ func TestPairAttemptsAreRateLimited(t *testing.T) {
 	}
 	if d.allowPairAttempt(addr) {
 		t.Fatal("accepted attempt over rate limit")
+	}
+	for i := 0; i < maxGlobalPairAttempts; i++ {
+		_ = d.allowPairAttempt(addr)
+	}
+	if !d.allowPairAttempt(&net.TCPAddr{IP: net.ParseIP("198.51.100.1"), Port: 1234}) {
+		t.Fatal("rate-limited attempts consumed the global allowance")
+	}
+}
+
+func TestPairAttemptsHaveGlobalLimit(t *testing.T) {
+	d := &Daemon{pairRates: map[string]pairRate{}}
+	for i := 0; i < maxGlobalPairAttempts; i++ {
+		addr := &net.TCPAddr{IP: net.ParseIP(fmt.Sprintf("192.0.2.%d", i)), Port: 1234}
+		if !d.allowPairAttempt(addr) {
+			t.Fatalf("global attempt %d was unexpectedly limited", i)
+		}
+	}
+	if d.allowPairAttempt(&net.TCPAddr{IP: net.ParseIP("198.51.100.1"), Port: 1234}) {
+		t.Fatal("accepted attempt over global rate limit")
+	}
+}
+
+func TestPairRateGroupsIPv6Prefix(t *testing.T) {
+	d := &Daemon{pairRates: map[string]pairRate{}}
+	for i := 0; i < maxPairAttemptsPerMinute; i++ {
+		addr := &net.TCPAddr{IP: net.ParseIP(fmt.Sprintf("2001:db8::%x", i+1)), Port: 1234}
+		if !d.allowPairAttempt(addr) {
+			t.Fatalf("IPv6 attempt %d was unexpectedly limited", i)
+		}
+	}
+	if d.allowPairAttempt(&net.TCPAddr{IP: net.ParseIP("2001:db8::ffff"), Port: 1234}) {
+		t.Fatal("IPv6 address rotation bypassed the prefix limit")
 	}
 }

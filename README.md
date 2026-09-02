@@ -16,7 +16,7 @@ out of scope.
 
 ## Build and test
 
-Go 1.24 or newer is required. Linux also needs `wl-clipboard`; macOS builds use
+Go 1.26.8 or a newer supported release is required. Linux also needs `wl-clipboard`; macOS builds use
 the system AppKit framework and a small Objective-C bridge.
 
 ```sh
@@ -39,7 +39,7 @@ supported.
 
 ## Install
 
-Install Go 1.24 or newer first. Linux additionally requires `wl-clipboard`, a
+Install Go 1.26.8 or a newer supported release first. Linux additionally requires `wl-clipboard`, a
 working Wayland session, and systemd user services. Clone the repository and run
 the platform installer from the checkout:
 

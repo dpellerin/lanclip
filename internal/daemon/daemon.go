@@ -97,11 +97,14 @@ type Daemon struct {
 	handshakes chan struct{}
 	pairMu     sync.Mutex
 	pairRates  map[string]pairRate
+	pairGlobal pairRate
 }
 
 const (
 	maxConcurrentHandshakes     = 32
 	maxPairAttemptsPerMinute    = 10
+	maxGlobalPairAttempts       = 64
+	maxPairRateEntries          = 256
 	maxClipboardFramesPerSecond = 30
 )
 
@@ -262,24 +265,48 @@ func (d *Daemon) allowPairAttempt(addr net.Addr) bool {
 	if err != nil {
 		host = addr.String()
 	}
+	host = pairRateKey(host)
 	now := time.Now()
 	d.pairMu.Lock()
 	defer d.pairMu.Unlock()
+	if d.pairGlobal.window.IsZero() || now.Sub(d.pairGlobal.window) >= time.Minute {
+		d.pairGlobal = pairRate{window: now}
+	}
 	for source, rate := range d.pairRates {
 		if now.Sub(rate.window) >= time.Minute {
 			delete(d.pairRates, source)
 		}
 	}
 	rate := d.pairRates[host]
+	if rate.window.IsZero() && len(d.pairRates) >= maxPairRateEntries {
+		return false
+	}
 	if rate.window.IsZero() || now.Sub(rate.window) >= time.Minute {
 		rate = pairRate{window: now}
 	}
 	if rate.count >= maxPairAttemptsPerMinute {
 		return false
 	}
+	if d.pairGlobal.count >= maxGlobalPairAttempts {
+		return false
+	}
 	rate.count++
 	d.pairRates[host] = rate
+	d.pairGlobal.count++
 	return true
+}
+
+func pairRateKey(host string) string {
+	ip := net.ParseIP(strings.TrimSpace(host))
+	if ip == nil {
+		return host
+	}
+	if v4 := ip.To4(); v4 != nil {
+		return v4.String()
+	}
+	// A single host can cheaply rotate IPv6 interface addresses. Grouping by
+	// /64 prevents that from bypassing the per-source limiter on a LAN.
+	return ip.Mask(net.CIDRMask(64, 128)).String() + "/64"
 }
 
 func (d *Daemon) pair(ctx context.Context, query string) (pairing.Peer, error) {
