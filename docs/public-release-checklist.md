@@ -1,17 +1,18 @@
 # Public release checklist
 
-Keep the repository private until every required item is complete.
+This records the checks completed before and immediately after the public
+launch.
 
 ## Privacy and security
 
-- [ ] Scan the full reachable Git history with Gitleaks.
-- [ ] Search tracked files and commit metadata for personal names, direct email
+- [x] Scan the full reachable Git history with Gitleaks.
+- [x] Search tracked files and commit metadata for personal names, direct email
       addresses, real hostnames, device identifiers, private network details,
       credentials, certificates, keys, tokens, and clipboard contents.
-- [ ] Confirm examples use synthetic names and documentation-only addresses.
-- [ ] Enable GitHub private vulnerability reporting immediately when repository
+- [x] Confirm examples use synthetic names and documentation-only addresses.
+- [x] Enable GitHub private vulnerability reporting immediately when repository
       visibility becomes public.
-- [ ] Confirm Actions has read-only default token permissions and cannot approve
+- [x] Confirm Actions has read-only default token permissions and cannot approve
       pull requests.
 
 ## Product verification
@@ -21,17 +22,16 @@ Keep the repository private until every required item is complete.
 - [x] Re-run restart, sleep/wake, Wi-Fi, and DHCP/address-change recovery using
       binaries built from the exact candidate revision.
 - [x] Inspect sockets and redacted logs after physical UAT.
-- [ ] Tag a release version only after every release gate passes.
+- [x] Tag a release version only after every release gate passes.
 
 ## Repository settings
 
-- [ ] Require the Linux and macOS CI checks on `main` with branch protection.
-- [ ] Require pull requests and prevent force pushes after the sanitized history
+- [x] Require the Linux and macOS CI checks on `main` with branch protection.
+- [x] Require pull requests and prevent force pushes after the sanitized history
       is established.
-- [ ] Confirm Dependabot is active for Go modules and GitHub Actions.
-- [ ] Confirm the description, topics, license, security policy, contribution
+- [x] Confirm Dependabot is active for Go modules and GitHub Actions.
+- [x] Confirm the description, topics, license, security policy, contribution
       guide, and issue templates render correctly.
-- [ ] Confirm repository visibility is still private before the final approval.
+- [x] Confirm repository visibility was still private before the final approval.
 
-Changing repository visibility is a separate, explicit action and is not part
-of this checklist's implementation work.
+Repository visibility was changed only after separate, explicit approval.
