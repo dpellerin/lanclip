@@ -10,9 +10,9 @@ synchronizes non-empty plain UTF-8 text and URL strings only. Images, files,
 HTML, rich text, the Linux primary selection, routed networks, and VPN relay are
 out of scope.
 
-> **Pre-release:** core two-machine text synchronization works, but the complete
-> restart, sleep/wake, Wi-Fi, and address-change acceptance suite has not yet
-> passed. The default build version is `0.1.0-dev`.
+> **Pre-release:** the complete two-machine acceptance suite has passed on the
+> target Mac and Omarchy systems. The default build version remains
+> `0.1.0-dev` until a release is tagged.
 
 ## Build and test
 
@@ -153,22 +153,14 @@ reconnect backoff bounds. `make test`, `make vet`, and both native builds should
 be run before release.
 
 Physical two-machine acceptance is intentionally separate because it cannot be
-simulated faithfully on one OS. Before tagging version 1, execute and record all
-18 real-machine cases in [the implementation plan](docs/implementation-plan.md),
-including Safari/Chrome URLs, repeated copies, the 200 ms burst, oversize and
-non-text input, service restarts, sleep/wake, Wi-Fi cycling, DHCP change,
-simultaneous copies, unpaired and changed-identity rejection, socket inspection,
-and log inspection. The release is not complete until that checklist passes on
-the actual Mac and Omarchy machines.
-
-Completed physical checks include two-way text and URL synchronization,
-Unicode, echo suppression, intentional repeated copies, oversize rejection, a
-ten-copy burst, service restart, pairing, and mutually authenticated TLS. The
-remaining release gates are restart recovery from the current revision,
-sleep/wake, Wi-Fi cycling, DHCP/address changes, simultaneous copies, unpaired
-and changed-identity rejection, and final socket/log inspection. Results should
-be recorded without publishing hostnames, addresses, device identifiers, or
-clipboard contents.
+simulated faithfully on one OS. All 18 real-machine cases in
+[the implementation plan](docs/implementation-plan.md) passed on the target Mac
+and Omarchy systems. Coverage included Safari/Chrome URLs, Unicode and multiline
+text, repeated and simultaneous copies, the 200 ms burst, oversize and non-text
+input, echo suppression, pairing and mutually authenticated TLS, unpaired and
+changed-identity rejection, service restart recovery, sleep/wake, Wi-Fi cycling,
+DHCP/address changes, and final socket and redacted-log inspection. No hostnames,
+addresses, device identifiers, or clipboard contents are recorded here.
 
 ## Security
 

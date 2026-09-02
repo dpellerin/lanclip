@@ -1,6 +1,6 @@
 # Lanclip Design and Acceptance Plan
 
-Status: implemented; core two-machine sync passed, extended recovery UAT remains
+Status: implemented; all 18 real-machine acceptance tests passed on the target systems
 Target: macOS + Wayland Linux on the same trusted LAN, validated on Omarchy/Hyprland
 Primary goal: fast, dependable, automatic two-way synchronization of text and URL clipboard content
 

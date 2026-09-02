@@ -16,11 +16,11 @@ Keep the repository private until every required item is complete.
 
 ## Product verification
 
-- [ ] Pass CI on Linux and macOS.
-- [ ] Complete and record all 18 physical acceptance cases in the design plan.
-- [ ] Re-run restart, sleep/wake, Wi-Fi, and DHCP/address-change recovery using
+- [x] Pass CI on Linux and macOS.
+- [x] Complete and record all 18 physical acceptance cases in the design plan.
+- [x] Re-run restart, sleep/wake, Wi-Fi, and DHCP/address-change recovery using
       binaries built from the exact candidate revision.
-- [ ] Inspect sockets and redacted logs after physical UAT.
+- [x] Inspect sockets and redacted logs after physical UAT.
 - [ ] Tag a release version only after every release gate passes.
 
 ## Repository settings
