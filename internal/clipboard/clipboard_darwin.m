@@ -15,12 +15,12 @@ char *lanclip_read_string(void) {
     }
 }
 
-int lanclip_write_string(const char *value) {
+int lanclip_write_string(const char *value, long *revision) {
     @autoreleasepool {
         NSPasteboard *board = [NSPasteboard generalPasteboard];
         NSString *text = [NSString stringWithUTF8String:value];
         if (text == nil) return 0;
-        [board clearContents];
+        *revision = [board declareTypes:@[NSPasteboardTypeString] owner:nil];
         return [board setString:text forType:NSPasteboardTypeString] ? 1 : 0;
     }
 }

@@ -8,7 +8,7 @@ package clipboard
 #include <stdlib.h>
 long lanclip_change_count(void);
 char *lanclip_read_string(void);
-int lanclip_write_string(const char *value);
+int lanclip_write_string(const char *value, long *revision);
 */
 import "C"
 
@@ -21,10 +21,12 @@ import (
 )
 
 type platformAdapter struct {
-	max    int
-	mu     sync.RWMutex
-	health Health
-	cancel context.CancelFunc
+	max            int
+	mu             sync.RWMutex
+	health         Health
+	cancel         context.CancelFunc
+	remoteRevision int64
+	hasRemote      bool
 }
 
 func New(max int) *platformAdapter { return &platformAdapter{max: max} }
@@ -78,10 +80,20 @@ func (a *platformAdapter) Write(ctx context.Context, text string) error {
 	}
 	p := C.CString(text)
 	defer C.free(unsafe.Pointer(p))
-	if C.lanclip_write_string(p) == 0 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	var revision C.long
+	if C.lanclip_write_string(p, &revision) == 0 {
 		return errors.New("AppKit pasteboard write failed")
 	}
+	a.remoteRevision = int64(revision)
+	a.hasRemote = true
 	return nil
+}
+func (a *platformAdapter) Remote() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.hasRemote && int64(C.lanclip_change_count()) == a.remoteRevision
 }
 func (a *platformAdapter) Health() Health { a.mu.RLock(); defer a.mu.RUnlock(); return a.health }
 func (a *platformAdapter) Close() error {

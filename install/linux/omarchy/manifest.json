@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "com.dpellerin.lanclip",
+  "name": "Lanclip",
+  "description": "Indicates when the current clipboard value arrived from another device.",
+  "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "Widget.qml" },
+  "barWidget": {
+    "displayName": "Lanclip",
+    "defaultSection": "right",
+    "allowMultiple": false
+  }
+}
