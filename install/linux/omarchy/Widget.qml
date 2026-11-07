@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.Commons
 import qs.Ui
 
 BarWidget {
@@ -20,13 +21,11 @@ BarWidget {
         visible: root.remote
     }
 
-    Text {
-        anchors.centerIn: parent
-        text: "LC"
-        textFormat: Text.PlainText
-        font.pixelSize: 12
-        font.weight: Font.DemiBold
-        font.letterSpacing: -0.5
+    OpticalGlyph {
+        anchors.fill: parent
+        text: "󰆏"
+        fontSize: Style.bar.iconFont
+        paintedSize: Style.bar.iconSize
         color: root.remote ? "#ffc738" : "#a4a4a4"
     }
 
