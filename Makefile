@@ -1,4 +1,4 @@
-VERSION != ./scripts/version.sh
+VERSION := $(shell ./scripts/version.sh)
 LDFLAGS = -s -w -X main.version=$(VERSION)
 
 .PHONY: all build test fmt vet clean
