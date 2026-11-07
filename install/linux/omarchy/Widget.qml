@@ -1,11 +1,12 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.Ui
 
-Item {
+BarWidget {
     id: root
     implicitWidth: 22
-    implicitHeight: 20
+    implicitHeight: vertical ? 20 : barSize
     property bool remote: false
 
     Accessible.name: remote ? "Lanclip, remote clipboard" : "Lanclip"
