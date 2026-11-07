@@ -65,6 +65,49 @@ explicitly delete it:
 On Linux, make sure the graphical user service manager receives
 `WAYLAND_DISPLAY` and `XDG_RUNTIME_DIR`. Never run Lanclip as root.
 
+## Clipboard indicator
+
+The small LC icon glows yellow while Lanclip's incoming value owns the
+clipboard. Pasting leaves it yellow. Replacing or clearing the clipboard
+returns it to its neutral color, even if you copy the same text again.
+
+The macOS installer starts the menu bar icon with the user session. On Omarchy
+with the Quickshell bar, install the widget from the Lanclip checkout after
+running the Linux installer:
+
+```sh
+widget_dir="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins/com.dpellerin.lanclip"
+install -Dm644 install/linux/omarchy/manifest.json "$widget_dir/manifest.json"
+install -Dm644 install/linux/omarchy/Widget.qml "$widget_dir/Widget.qml"
+omarchy-shell shell rescanPlugins
+omarchy plugin enable com.dpellerin.lanclip
+```
+
+For a Waybar setup, add `"custom/lanclip"` to your bar's module list and add
+this module to the config:
+
+```json
+"custom/lanclip": {
+  "exec": "$HOME/.local/bin/lanclip indicator",
+  "return-type": "json",
+  "restart-interval": 2,
+  "tooltip": false
+}
+```
+
+In Waybar's stylesheet, set the incoming state to yellow:
+
+```css
+#custom-lanclip {
+  font-weight: 600;
+}
+
+#custom-lanclip.remote {
+  color: #ffc738;
+  text-shadow: 0 0 4px #ffc738;
+}
+```
+
 ## Pair once
 
 Start both services and wait a few seconds for discovery:

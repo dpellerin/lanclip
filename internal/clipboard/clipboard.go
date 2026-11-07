@@ -11,6 +11,7 @@ type Health struct {
 type Adapter interface {
 	Start(context.Context) (<-chan Event, error)
 	Write(context.Context, string) error
+	Remote() bool
 	Health() Health
 	Close() error
 }

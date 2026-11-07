@@ -744,6 +744,8 @@ func (d *Daemon) recordError(id string, err error) {
 
 func (d *Daemon) handleControl(ctx context.Context, r control.Request) control.Response {
 	switch r.Command {
+	case "clipboard-origin":
+		return control.Response{OK: true, Data: d.clip.Remote()}
 	case "status":
 		return control.Response{OK: true, Data: d.status()}
 	case "peers":

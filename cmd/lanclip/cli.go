@@ -50,6 +50,12 @@ func runCLI(args []string, input io.Reader, output io.Writer) error {
 		}
 		return runDaemon(paths)
 	}
+	if args[0] == "indicator" {
+		if len(args) != 1 {
+			return usageError()
+		}
+		return runIndicator(paths.Socket, output)
+	}
 	return runControl(args, paths.Socket, bufio.NewReader(input), output, control.Call)
 }
 
@@ -528,6 +534,7 @@ Usage:
   lanclip reject [device]     Reject a pairing request
   lanclip unpair [device]     Remove a paired device
   lanclip doctor              Check the local setup
+  lanclip indicator           Run the desktop clipboard indicator
   lanclip version             Show the installed version
 
 Device names are optional. Without one, Lanclip presents a numbered menu.`)

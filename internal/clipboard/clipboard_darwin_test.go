@@ -66,4 +66,15 @@ func TestNativeClipboardRoundTrip(t *testing.T) {
 	if string(got) != written {
 		t.Fatalf("native write returned %q", got)
 	}
+	if !a.Remote() {
+		t.Fatal("reading the clipboard cleared remote ownership")
+	}
+	copySame := exec.Command("pbcopy")
+	copySame.Stdin = bytes.NewBufferString(written)
+	if err := copySame.Run(); err != nil {
+		t.Fatal(err)
+	}
+	if a.Remote() {
+		t.Fatal("a local copy of identical text retained remote ownership")
+	}
 }

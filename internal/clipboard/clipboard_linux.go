@@ -4,6 +4,7 @@ package clipboard
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -11,6 +12,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 )
@@ -21,7 +24,9 @@ type platformAdapter struct {
 	listener net.Listener
 	mu       sync.RWMutex
 	health   Health
+	ctx      context.Context
 	cancel   context.CancelFunc
+	owner    <-chan struct{}
 }
 
 func New(max int) *platformAdapter {
@@ -49,6 +54,7 @@ func (a *platformAdapter) Start(parent context.Context) (<-chan Event, error) {
 	}
 	a.listener = ln
 	ctx, cancel := context.WithCancel(parent)
+	a.ctx = ctx
 	a.cancel = cancel
 	out := make(chan Event, 32)
 	a.setHealth(true, "")
@@ -58,6 +64,8 @@ func (a *platformAdapter) Start(parent context.Context) (<-chan Event, error) {
 }
 func (a *platformAdapter) accept(ctx context.Context, out chan<- Event) {
 	defer close(out)
+	var handlers sync.WaitGroup
+	defer handlers.Wait()
 	for {
 		c, err := a.listener.Accept()
 		if err != nil {
@@ -66,8 +74,11 @@ func (a *platformAdapter) accept(ctx context.Context, out chan<- Event) {
 			}
 			return
 		}
+		handlers.Add(1)
 		go func() {
+			defer handlers.Done()
 			defer c.Close()
+			_ = c.SetReadDeadline(time.Now().Add(time.Second))
 			var h [4]byte
 			if _, e := io.ReadFull(c, h[:]); e != nil {
 				return
@@ -118,44 +129,58 @@ func (a *platformAdapter) watchLoop(ctx context.Context) {
 	}
 }
 func (a *platformAdapter) Write(ctx context.Context, text string) error {
-	// wl-copy becomes the Wayland clipboard owner and may remain alive until
-	// another application takes ownership. Waiting for it synchronously blocks
-	// the peer read loop and prevents subsequent remote events from being
-	// applied. Feed the bounded payload under the caller's deadline, then reap
-	// wl-copy asynchronously when its ownership eventually ends.
-	cmd := exec.Command("wl-copy", "--type", "text/plain;charset=utf-8")
-	in, err := cmd.StdinPipe()
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
-	if err = cmd.Start(); err != nil {
+	// wl-copy also offers the standard plain-text MIME types. The unique
+	// offer lets us confirm this write even if the previous text was identical.
+	mime := "text/plain;charset=utf-8;lanclip=" + rand.Text()
+	cmd := exec.CommandContext(a.ctx, "wl-copy", "--foreground", "--type", mime)
+	cmd.Stdin = strings.NewReader(text)
+	if err := cmd.Start(); err != nil {
 		return err
 	}
-	fed := make(chan error, 1)
+	done := make(chan struct{})
 	go func() {
-		_, writeErr := io.WriteString(in, text)
-		closeErr := in.Close()
-		if writeErr != nil {
-			fed <- writeErr
-			return
-		}
-		fed <- closeErr
-	}()
-	select {
-	case <-ctx.Done():
-		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
-		return ctx.Err()
-	case err := <-fed:
-		if err != nil {
-			_ = cmd.Process.Kill()
-			_ = cmd.Wait()
-			return err
+		close(done)
+	}()
+
+	tick := time.NewTicker(20 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		types, err := exec.CommandContext(ctx, "wl-paste", "--list-types").Output()
+		if err == nil && slices.Contains(strings.Split(string(types), "\n"), mime) {
+			a.mu.Lock()
+			a.owner = done
+			a.mu.Unlock()
+			return nil
 		}
-		go func() { _ = cmd.Wait() }()
-		return nil
+		select {
+		case <-ctx.Done():
+			_ = cmd.Process.Kill()
+			<-done
+			return ctx.Err()
+		case <-done:
+			return errors.New("wl-copy exited before acquiring clipboard ownership")
+		case <-tick.C:
+		}
+	}
+}
+
+func (a *platformAdapter) Remote() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if a.owner == nil {
+		return false
+	}
+	// wl-copy exits when the compositor cancels its ownership. Paste requests
+	// leave it running, and every replacement cancels it regardless of MIME.
+	select {
+	case <-a.owner:
+		return false
+	default:
+		return true
 	}
 }
 func (a *platformAdapter) Health() Health { a.mu.RLock(); defer a.mu.RUnlock(); return a.health }
