@@ -10,9 +10,6 @@ synchronizes non-empty plain UTF-8 text and URL strings only. Images, files,
 HTML, rich text, the Linux primary selection, routed networks, and VPN relay are
 out of scope.
 
-> **Pre-release:** the complete two-machine acceptance suite has passed on the
-> target Mac and Omarchy systems. The first tagged release is `v0.1.0`.
-
 ## Build and test
 
 Go 1.26.10 or a newer supported release is required. Linux also needs `wl-clipboard`; macOS builds use
@@ -26,7 +23,7 @@ make build
 
 Builds and installers run from an exact `v*` Git tag automatically embed that
 tag without the leading `v`. Untagged development builds default to
-`0.1.0-dev`; override this with `make VERSION=<version> build` or
+`1.0.0-dev`; override this with `make VERSION=<version> build` or
 `LANCLIP_VERSION=<version>` when running an installer. On macOS, the native
 AppKit adapter has an opt-in smoke test that temporarily replaces and then
 restores the current plain-text clipboard:
@@ -67,7 +64,7 @@ On Linux, make sure the graphical user service manager receives
 
 ## Clipboard indicator
 
-The small LC icon glows yellow while Lanclip's incoming value owns the
+The clipboard indicator glows yellow while Lanclip's incoming value owns the
 clipboard. Pasting leaves it yellow. Replacing or clearing the clipboard
 returns it to its neutral color, even if you copy the same text again.
 

@@ -1,8 +1,7 @@
 # Contributing to Lanclip
 
-Thanks for helping improve Lanclip. The project is pre-release, and changes to
-pairing, transport, discovery, clipboard handling, logging, or file permissions
-should be treated as security-sensitive.
+Changes to pairing, transport, discovery, clipboard handling, logging, or file
+permissions should be treated as security-sensitive.
 
 ## Development setup
 

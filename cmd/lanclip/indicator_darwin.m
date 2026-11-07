@@ -19,18 +19,19 @@ static NSImage *indicatorImage(BOOL remote) {
         } else {
             [NSColor.blackColor setStroke];
         }
-        NSBezierPath *letters = [NSBezierPath bezierPath];
-        letters.lineWidth = 1.8;
-        letters.lineCapStyle = NSLineCapStyleRound;
-        letters.lineJoinStyle = NSLineJoinStyleRound;
-        [letters moveToPoint:NSMakePoint(3.5, 12.8)];
-        [letters lineToPoint:NSMakePoint(3.5, 5.2)];
-        [letters lineToPoint:NSMakePoint(7.2, 5.2)];
-        [letters moveToPoint:NSMakePoint(14.8, 11.8)];
-        [letters curveToPoint:NSMakePoint(14.8, 6.2)
-                controlPoint1:NSMakePoint(7.4, 16.8)
-                controlPoint2:NSMakePoint(7.4, 1.2)];
-        [letters stroke];
+        NSBezierPath *sheets = [NSBezierPath bezierPath];
+        sheets.lineWidth = 1.6;
+        sheets.lineCapStyle = NSLineCapStyleRound;
+        [sheets moveToPoint:NSMakePoint(3.5, 5.8)];
+        [sheets lineToPoint:NSMakePoint(3.5, 13.8)];
+        [sheets curveToPoint:NSMakePoint(4.7, 15)
+                controlPoint1:NSMakePoint(3.5, 14.5)
+                controlPoint2:NSMakePoint(4, 15)];
+        [sheets lineToPoint:NSMakePoint(12, 15)];
+        [sheets appendBezierPathWithRoundedRect:NSMakeRect(6.5, 3, 8, 9)
+                                       xRadius:1.2
+                                       yRadius:1.2];
+        [sheets stroke];
         [NSGraphicsContext restoreGraphicsState];
         return YES;
     }];
