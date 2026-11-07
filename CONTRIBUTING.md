@@ -6,7 +6,7 @@ should be treated as security-sensitive.
 
 ## Development setup
 
-Use Go 1.26.8 or a newer supported release. Linux development additionally
+Use Go 1.26.10 or a newer supported release. Linux development additionally
 requires `wl-clipboard`.
 Build native binaries on their target operating system.
 

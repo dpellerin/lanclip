@@ -25,7 +25,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26.8'
+          go-version: '1.26.10'
           cache: true
       - name: Verify modules
         run: go mod verify
@@ -35,6 +35,11 @@ jobs:
         run: go vet ./...
       - name: Build
         run: make build
+      - name: Verify built CLI over isolated control socket
+        if: runner.os == 'Linux'
+        env:
+          LANCLIP_TEST_BINARY: ${{ github.workspace }}/bin/lanclip
+        run: go test ./cmd/lanclip -run TestBuiltCLIRejectsOversizedFingerprintFromControlSocket -v -count=1
       - name: Scan source for reachable vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
       - name: Scan built binary for vulnerabilities
