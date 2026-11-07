@@ -72,3 +72,18 @@ A merge does not update an already installed executable. Build on each target
 OS using the patched toolchain and follow the existing installation process to
 roll it out; do not replace a user's binary or restart their clipboard service
 as a side effect of repository verification.
+
+## v0.1.1 rollout verification
+
+GitHub Actions passed the macOS and Linux CI jobs for the security update at
+`f5efdac`. Both machines were then updated to that commit.
+[CI run](https://github.com/dpellerin/lanclip/actions/runs/42389656644)
+
+- The Apple silicon Mac build used Go 1.27.3. The race suite, vet, and source
+  and binary vulnerability scans passed. The LaunchAgent was running and
+  `lanclip doctor` passed all nine checks.
+- The Omarchy build used Go 1.26.10. `make test` and `make vet` passed. The
+  systemd user service was enabled and running, and `lanclip doctor` passed all
+  eleven checks.
+- Text copied on Omarchy was successfully pasted on the Mac using the existing
+  pairing.
