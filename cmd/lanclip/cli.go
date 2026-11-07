@@ -473,6 +473,12 @@ func friendlyTime(value string) string {
 }
 
 func groupedFingerprint(value string) string {
+	// SHA-256 fingerprints are at most 64 hex characters (discovery may use a
+	// shorter prefix). Bound untrusted display metadata before size arithmetic
+	// and allocation; never truncate a value used for human trust comparison.
+	if len(value) > 64 {
+		return "Invalid fingerprint"
+	}
 	groups := make([]string, 0, (len(value)+3)/4)
 	for len(value) > 4 {
 		groups = append(groups, value[:4])
